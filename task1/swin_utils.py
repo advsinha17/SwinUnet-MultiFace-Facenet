@@ -4,8 +4,7 @@ import tensorflow as tf
 def window_partition(x, window_size):
     B, H, W, C = x.shape
     x = tf.reshape(x, [B, H // window_size, window_size, W // window_size, window_size, C])
-    windows = tf.transpose(x, [0, 1, 2, 3, 4, 5])
-    windows = tf.reshape(windows, [-1, window_size, window_size, C])
+    windows = tf.reshape(x, [-1, window_size, window_size, C])
     return windows
 
 
