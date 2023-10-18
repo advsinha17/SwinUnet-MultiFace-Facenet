@@ -138,7 +138,6 @@ class TransformerBlock(tf.keras.layers.Layer):
                 embed_dim, 
                 input_res,
                 num_heads, 
-                mlp_units = 1024,
                 window_size = 7, 
                 window_shift = 0, 
                 attn_drop = 0.,
@@ -157,7 +156,7 @@ class TransformerBlock(tf.keras.layers.Layer):
         self.norm_layer2 = tf.keras.layers.LayerNormalization()
         self.attn = WindowAttention(embed_dim, (self.window_size, self.window_size), num_heads, attn_drop, proj_drop)
         self.Mlp = tf.keras.Sequential([
-            tf.keras.layers.Dense(mlp_units),
+            tf.keras.layers.Dense(4 * embed_dim),
             tf.keras.layers.Activation(tf.keras.activations.gelu),
             tf.keras.layers.Dropout(proj_drop),
             tf.keras.layers.Dense(embed_dim),
@@ -223,14 +222,13 @@ class TransformerBlock(tf.keras.layers.Layer):
     
 class StageTransformerBlocks(tf.keras.layers.Layer):
 
-    def __init__(self, depth, input_dim, embed_dim, num_heads, mlp_units, attn_drop = 0., proj_drop = 0., window_size = 7):
+    def __init__(self, depth, input_dim, embed_dim, num_heads, attn_drop = 0., proj_drop = 0., window_size = 7):
         super(StageTransformerBlocks, self).__init__()
         self.transformers = tf.keras.Sequential([
             TransformerBlock(
                 embed_dim = embed_dim,
                 input_res = (input_dim, input_dim),
                 num_heads = num_heads,
-                mlp_units = mlp_units,
                 window_size = window_size,
                 window_shift = 0 if i % 2 == 0 else window_size // 2,
                 attn_drop = attn_drop,
@@ -256,7 +254,6 @@ class SwinTransformer(tf.keras.Model):
                 num_heads = [3, 6, 12, 24],
                 norm_layer = None,
                 window_size = 7,
-                mlp_units = 1024,
                 attn_drop_rate = 0.,
                 proj_drop_rate = 0.
                 ):
@@ -271,7 +268,6 @@ class SwinTransformer(tf.keras.Model):
                                                         input_dim // 4, 
                                                         embed_dim, 
                                                         num_heads[0],
-                                                        mlp_units,
                                                         attn_drop_rate,
                                                         proj_drop_rate,
                                                         window_size)
@@ -279,7 +275,6 @@ class SwinTransformer(tf.keras.Model):
                                                         input_dim // 8, 
                                                         embed_dim * 2, 
                                                         num_heads[1],
-                                                        mlp_units,
                                                         attn_drop_rate,
                                                         proj_drop_rate,
                                                         window_size)
@@ -287,7 +282,6 @@ class SwinTransformer(tf.keras.Model):
                                                         input_dim // 16, 
                                                         embed_dim * 4, 
                                                         num_heads[2],
-                                                        mlp_units,
                                                         attn_drop_rate,
                                                         proj_drop_rate,
                                                         window_size)
@@ -295,7 +289,6 @@ class SwinTransformer(tf.keras.Model):
                                                         input_dim // 32, 
                                                         embed_dim * 8,
                                                         num_heads[3],
-                                                        mlp_units,
                                                         attn_drop_rate,
                                                         proj_drop_rate,
                                                         window_size)
