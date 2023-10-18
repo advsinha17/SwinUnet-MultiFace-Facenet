@@ -25,50 +25,57 @@ class ConvNeXTBlock(tf.keras.layers.Layer):
 
 class ConvNeXT(tf.keras.Model):
 
-    def __init__(self, num_labels, embed_dim = 96, depths = [3, 3, 9, 3]):
+    def __init__(self, num_classes, embed_dim = 96, depths = [3, 3, 9, 3]):
         
         super(ConvNeXT, self).__init__()
-        self.patchify_stem = tf.keras.Sequential([
+
+        self.stage1 = [
             tf.keras.layers.Conv2D(filters = embed_dim, kernel_size = 4, strides = 4),
             tf.keras.layers.LayerNormalization()
-        ])
-        self.stage1 = tf.keras.Sequential([
-            ConvNeXTBlock(embed_dim)
-            for _ in range(depths[0])
-        ])
-        self.stage2 = tf.keras.Sequential([
+        ]
+        self.stage1_block = [ConvNeXTBlock(embed_dim) for _ in range(depths[0])]
+
+        self.stage2 = [
             tf.keras.layers.LayerNormalization(),
-            tf.keras.layers.Conv2D(filters = embed_dim * 2, kernel_size = 2, strides = 2)] + 
-            [ ConvNeXTBlock(embed_dim * 2) for _ in range(depths[1])
-            ])
-        self.stage3 = tf.keras.Sequential([
+            tf.keras.layers.Conv2D(filters = embed_dim * 2, kernel_size = 2, strides = 2)] 
+        self.stage2_block = [ConvNeXTBlock(embed_dim * 2) for _ in range(depths[1])]
+
+        self.stage3 = [
             tf.keras.layers.LayerNormalization(),
-            tf.keras.layers.Conv2D(filters = embed_dim * 4, kernel_size = 2, strides = 2)] + 
-            [ ConvNeXTBlock(embed_dim * 4) for _ in range(depths[2])
-            ])
-        self.stage4 = tf.keras.Sequential([
+            tf.keras.layers.Conv2D(filters = embed_dim * 4, kernel_size = 2, strides = 2)]
+        self.stage3_block = [ConvNeXTBlock(embed_dim * 4) for _ in range(depths[2])]
+
+        self.stage4 = [
             tf.keras.layers.LayerNormalization(),
-            tf.keras.layers.Conv2D(filters = embed_dim * 8, kernel_size = 2, strides = 2)] + 
-            [ ConvNeXTBlock(embed_dim * 8) for _ in range(depths[3])
-            ])
+            tf.keras.layers.Conv2D(filters = embed_dim * 8, kernel_size = 2, strides = 2)]
+        self.stage4_block = [ConvNeXTBlock(embed_dim * 8) for _ in range(depths[3])]
+
         self.pool = tf.keras.layers.GlobalAveragePooling2D()
-        self.norm_layer = tf.keras.layers.LayerNormalization()
-        self.output_layer = tf.keras.layers.Dense(num_labels)
+        self.norm_layer2 = tf.keras.layers.LayerNormalization()
+        self.class_output_layer = tf.keras.layers.Dense(num_classes, activation = 'sigmoid', name = 'class_predictions')
+        self.bbox_output_layer = tf.keras.layers.Dense(4, name = 'bbox_predictions')
 
 
     def call(self, x):
-        for layer in self.patchify_stem.layers:
+        for layer in self.stage1:
             x = layer(x)
-        for layer in self.stage1.layers:
+        for layer in self.stage1_block:
             x = layer(x)
-        for layer in self.stage2.layers:
+        for layer in self.stage2:
             x = layer(x)
-        for layer in self.stage3.layers:
+        for layer in self.stage2_block:
             x = layer(x)
-        for layer in self.stage4.layers:
+        for layer in self.stage3:
+            x = layer(x)
+        for layer in self.stage3_block:
+            x = layer(x)
+        for layer in self.stage4:
+            x = layer(x)
+        for layer in self.stage4_block:
             x = layer(x)
         x = self.pool(x)
-        x = self.norm_layer(x)
-        output = self.output_layer(x)
+        x = self.norm_layer2(x)
+        class_output = self.class_output_layer(x)
+        bbox_output = self.bbox_output_layer(x)
 
-        return output
+        return [class_output, bbox_output]
