@@ -161,3 +161,4 @@ cython_debug/
 *.pyc
 __pycharm__/
 .DS_Store
+data/
