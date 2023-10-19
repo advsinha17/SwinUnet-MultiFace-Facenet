@@ -1,5 +1,6 @@
 import tensorflow as tf
 import os
+from swin_utils import StochasticDepth
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 class ConvNeXTBlock(tf.keras.layers.Layer):
@@ -12,14 +13,17 @@ class ConvNeXTBlock(tf.keras.layers.Layer):
         self.pointwise_conv1 = tf.keras.layers.Conv2D(filters = 4 * embed_dim, kernel_size = 1)
         self.gelu = tf.keras.layers.Activation(tf.keras.activations.gelu)
         self.pointwise_conv2 = tf.keras.layers.Conv2D(filters = embed_dim, kernel_size = 1)
+        self.gamma = tf.Variable(1e-6 * tf.ones(embed_dim,))
+        self.drop_path = StochasticDepth(0.1)
 
     def call(self, input):
         x = self.depthwise_conv(input)
-        x = self.norm_layer(input)
+        x = self.norm_layer(x)
         x = self.pointwise_conv1(x)
         x = self.gelu(x)
         x = self.pointwise_conv2(x)
-        x += input
+        x *= self.gamma
+        x = self.drop_path(x) + input
 
         return x
 
@@ -50,7 +54,7 @@ class ConvNeXT(tf.keras.Model):
             tf.keras.layers.Conv2D(filters = embed_dim * 8, kernel_size = 2, strides = 2)]
         self.stage4_block = [ConvNeXTBlock(embed_dim * 8) for _ in range(depths[3])]
 
-        self.pool = tf.keras.layers.GlobalAveragePooling2D()
+        self.pool = tf.keras.layers.GlobalAvgPool2D()
         self.norm_layer2 = tf.keras.layers.LayerNormalization()
         self.class_output_layer = tf.keras.layers.Dense(num_classes, activation = 'sigmoid', name = 'class_predictions')
         self.bbox_output_layer = tf.keras.layers.Dense(4, name = 'bbox_predictions')
@@ -76,6 +80,10 @@ class ConvNeXT(tf.keras.Model):
         x = self.pool(x)
         x = self.norm_layer2(x)
         class_output = self.class_output_layer(x)
-        bbox_output = self.bbox_output_layer(x)
+        # bbox_output = self.bbox_output_layer(x)
 
-        return [class_output, bbox_output]
+        return class_output
+        # return [class_output, bbox_output]
+            # x = tf.keras.layers.GlobalAveragePooling2D()(x)
+    # x = tf.keras.layers.LayerNormalization()(x)
+    # class_output = tf.keras.layers.Dense(6, activation='sigmoid', name='class_predictions')(x)
