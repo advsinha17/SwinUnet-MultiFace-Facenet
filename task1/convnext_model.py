@@ -57,7 +57,6 @@ class ConvNeXT(tf.keras.Model):
         self.pool = tf.keras.layers.GlobalAvgPool2D()
         self.norm_layer2 = tf.keras.layers.LayerNormalization()
         self.class_output_layer = tf.keras.layers.Dense(num_classes, activation = 'sigmoid', name = 'class_predictions')
-        self.bbox_output_layer = tf.keras.layers.Dense(4, name = 'bbox_predictions')
 
 
     def call(self, x):
@@ -80,10 +79,6 @@ class ConvNeXT(tf.keras.Model):
         x = self.pool(x)
         x = self.norm_layer2(x)
         class_output = self.class_output_layer(x)
-        # bbox_output = self.bbox_output_layer(x)
 
         return class_output
-        # return [class_output, bbox_output]
-            # x = tf.keras.layers.GlobalAveragePooling2D()(x)
-    # x = tf.keras.layers.LayerNormalization()(x)
-    # class_output = tf.keras.layers.Dense(6, activation='sigmoid', name='class_predictions')(x)
+
