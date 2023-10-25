@@ -32,17 +32,16 @@ def detect_faces(detector: MTCNN,
 
     return None
 
-def get_embedding(model: Facenet, 
-                  face_image: np.ndarray) -> np.ndarray:
-    face_image = (face_image - 127.5) / 128.
-    face_image = np.reshape(face_image, (1,) + IMAGE_SIZE + (3,))
-    embedding = model.predict(face_image)
-    return embedding
+def get_embedding(model: Facenet, face_images: List[np.ndarray]) -> np.ndarray:
+    face_images = [(face_image - 127.5) / 128. for face_image in face_images]
+    face_images = np.stack(face_images, axis=0)
+    embeddings = model.predict(face_images)
+    return embeddings
 
 def cluster_faces(embeddings: np.ndarray, 
                   image_paths: List[str], 
                   output_dir: str = 'output_images/'):
-    clusterer = DBSCAN(eps = 10, min_samples = 2, metric = "euclidean", n_jobs = -1)
+    clusterer = DBSCAN(eps = 11.4, min_samples = 5, metric = "euclidean", n_jobs = -1)
     clusterer.fit(embeddings)
     labels_id = clusterer.labels_
 
@@ -87,15 +86,17 @@ def detect(input_dir: str = 'input_images/',
     images = os.listdir(input_dir)
     all_embeddings = []
     all_face_image_paths = []
+    all_face_images = []
     for image in images:
         image_path = os.path.join(input_dir, image)
         face_list = detect_faces(detector, image_path)
 
         if face_list:
-            for face in face_list:
-                embedding = get_embedding(model, face)
-                all_embeddings.append(embedding)
-                all_face_image_paths.append(image_path)
+            all_face_images.extend(face_list)
+            all_face_image_paths.extend([image_path] * len(face_list))
+
+    embeddings_batch = get_embedding(model, all_face_images)
+    all_embeddings.extend(embeddings_batch)
     cluster_faces(np.squeeze(all_embeddings), all_face_image_paths, output_dir)
 
     print(f"Face detection completed. Check the results in the directory: {output_dir}")
