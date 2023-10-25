@@ -1,102 +1,157 @@
-import tensorflow as tf
 import os
+from PIL import Image
 import numpy as np
 import random
-import cv2
-import xml.etree.ElementTree as ET
+import re
+from labeldata import id_to_color
 
-CWD = os.path.dirname(__file__)
-classes = ['person', 'bird', 'cat', 'cow', 'dog', 'horse', 'sheep', 'aeroplane', 'bicycle', 'boat', 'bus', 'car', 
-            'motorbike', 'train', 'bottle', 'chair', 'diningtable', 'pottedplant', 'sofa', 'tvmonitor']
-id_to_label = {k: v for k, v in enumerate(classes)}
-label_to_id = {v: k for k, v in id_to_label.items()}
-
-
-def extract_single_xml_file(filename):
-    parse = ET.parse(filename)
-    objects = parse.findall('./object')
-    fname = parse.find('./filename').text
-    dicts = [{obj.find('name').text: [int(float(obj.find('bndbox/xmin').text)),
-                                      int(float(obj.find('bndbox/ymin').text)),
-                                      int(float(obj.find('bndbox/xmax').text)),
-                                      int(float(obj.find('bndbox/ymax').text))]}
-                                      for obj in objects]
-    return {'filename': fname, 'objects': dicts}
-
-def get_annotations(annot_dir):
-    annotations = []
-    for file in sorted(os.listdir(annot_dir)):
-        annotation = extract_single_xml_file(os.path.join(annot_dir, file))
-        image_objects = []
-        for object in annotation['objects']:
-            image_objects.append(object)
-
-        if len(image_objects) == 1:
-            annotation['class'] = list(image_objects[0].keys())[0]
-            annotation['bbox'] = list(image_objects[0].values())[0]
-            annotation.pop('objects')
-            annotations.append(annotation)
-
-    return annotations
-
-def split_data(annotations, train_split = 0.8):
-    random.shuffle(annotations)
-    train_annot = annotations[:int(len(annotations) * train_split)]
-    val_annot = annotations[int(len(annotations) * train_split):]
-    return train_annot, val_annot
+import tensorflow as tf
 
 class DataGenerator(tf.keras.utils.Sequence):
 
-    '''
-    Dataset used is PASCAL VOS 2012 (http://host.robots.ox.ac.uk/pascal/VOC/voc2012/#devkit).
-    Generates batches of images where each image contains only 1 object.
+    """
+
+    Class that generates batches of (input, target) pairs after preprocessing the images.
 
     Args:
-        annotations: List annotation dictionaries.
-        image_size: Size of the image. Defaults to (224, 224).
-        batch_size: Size of the batch. Defaults to 64.
-    '''
+        images_dir: Directory from which to obtain the images.
+        id_to_color: Dictionary used to convert encoded images into appropriate labels.
+        batch_size: Size of batch generated.
+        shuffle: True if images are to be shuffled at end of each epoch, false otherwise.
+        predicting: True if generated data is being used to make predictions. (This is required as os.listdir() generates a list
+        in arbitrary order. While predicting, the list is sorted so that prediction are made in the same order the images are
+        present in the input directory.)
 
-    def __init__(self, annotations, image_size = (224, 224), batch_size = 64):
+    """
+
+    def __init__(self, images_dir, batch_size = 16, shuffle = True, predicting = False):
+
         super(DataGenerator, self).__init__()
+
+        self.images_dir = images_dir
         self.batch_size = batch_size
-        self.annotations = annotations
-        self.list_images = [i['filename'] for i in self.annotations]
-        self.images_dict = {}
-        for i in self.annotations:
-            self.images_dict[i['filename']] = i['bbox'].copy()
-            self.images_dict[i['filename']].insert(0, label_to_id[i['class']])
+        self.shuffle = shuffle
+        self.list_images = os.listdir(images_dir)
+        if predicting:
+            self._sort_dir()
+        self.image_size = (128, 128)
+        self.image_shape = self.image_size + (3,)
+        self.id_to_color = id_to_color
+        self.on_epoch_end()
+
+    def _sort_dir(self):
+
+        """
+        Sort the list of image paths.
+        """
+        self.list_images.sort(key = self._alnum_key)
 
 
-        self.image_size = image_size
+    def _tryint(self, dir):
+
+        """
+        Return an int if possible, or `dir` unchanged.
+
+        Args:
+            dir: Path of an image.
+
+        """
+        try:
+            return int(dir)
+
+        except ValueError:
+            return dir
+
+    def _alnum_key(self, dir):
+
+        """
+        Turn a string into a list of string and number chunks.
+        """
+        return [self._tryint(c) for c in re.split('([0-9]+)', dir)]
+
 
     def __len__(self):
 
+        """
+        Returns number of batches per epoch
+        """
         return int(np.ceil(len(self.list_images) / self.batch_size))
-    
-    def read_image(self, filename):
-        path = os.path.join(CWD, 'data/JPEGImages', filename)
-        image = cv2.imread(path)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        image = cv2.resize(image, self.image_size)
-        image = (image - 127.5) / 128.
-        return image
+
+    def _image_mask_split(self, filename):
+
+        """
+        Splits the input image and the target image.
+
+        Args:
+            filename: Path of the image.
+
+        Returns:
+            Tuple consisting of encoding of image and mask.
+
+        """
+        img_path = os.path.join(self.images_dir, filename)
+        image = Image.open(img_path)
+        image, mask = image.crop([0, 0, 256, 256]), image.crop([256, 0, 512, 256])
+        image = image.resize(self.image_size)
+        mask = mask.resize(self.image_size)
+        image = np.array(image)/255.0
+        mask = np.array(mask)
+        return image, mask
+
+    def _vectorized_labels(self, mask, mapping):
+
+        """
+        Returns one-hot encoded label for each pixel of the target mask.
+
+        Args:
+            mask: Encoding of the mask.
+            mapping: Dictionary mapping each category to a pixel encoding.
+
+        Returns:
+            one_hot_encoded: One-hot encoded label for each pixel of the mask image.
+
+        """
+        height, width, _ = mask.shape
+
+        closest_distance = np.full((height, width), np.inf)
+        closest_category = np.full((height, width), -1, dtype=int)
+
+        for id, color in mapping.items():
+            dist = np.linalg.norm(mask - np.array(color).reshape(1, 1, -1), axis=-1)
+
+            is_closer = closest_distance > dist
+
+            closest_distance = np.where(is_closer, dist, closest_distance)
+            closest_category = np.where(is_closer, id, closest_category)
+
+        num_classes = len(mapping)
+        one_hot_encoded = tf.keras.utils.to_categorical(closest_category, num_classes)
+
+        return one_hot_encoded
+
+
+
 
     def __getitem__(self, index):
-        batch = self.list_images[index * self.batch_size: (index + 1) * self.batch_size]
+
+        """
+        Generates a batch of data.
+        """
+
+        batches = self.list_images[index * self.batch_size:(index + 1) * self.batch_size]
         images = []
-        labels = []
-        for image in batch:
-            img = self.read_image(image)
-            images.append(img)
-            label = [self.images_dict[image]]
-            labels.append(label)
+        masks = []
+        for filename in batches:
+            image, mask = self._image_mask_split(filename)
+            images.append(image)
+            masks.append(self._vectorized_labels(mask, id_to_color))
 
-        return images, labels
-    
+        return np.stack(images).astype('float32'), np.stack(masks).astype('float32')
 
-if __name__ == '__main__':
-    print(label_to_id)
-    print(id_to_label)
-    annots = get_annotations(os.path.join(CWD, 'data/Annotations'))
-            
+    def on_epoch_end(self):
+
+        """
+        Shuffles list of images on end of each epoch.
+        """
+        if self.shuffle:
+            random.shuffle(self.list_images)
