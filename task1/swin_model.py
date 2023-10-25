@@ -3,27 +3,7 @@ import os
 import numpy as np
 from swin_utils import window_partition, window_reverse, StochasticDepth
 
-os.environ['TF_CPP_MIN_LG_LEVEL'] = "2"
-
-# class PatchPartition(tf.keras.layers.Layer):
-
-#     def __init__(self, patch_size = 4):
-#         super(PatchPartition, self).__init__();
-#         self.patch_size = patch_size
-
-#     def call(self, input):
-#         B, _, _, _ = input.get_shape().as_list()
-#         patches = tf.image.extract_patches(
-#             images = input,
-#             sizes = [1, self.patch_size, self.patch_size, 1],
-#             strides = [1, self.patch_size, self.patch_size, 1],
-#             rates = [1, 1, 1, 1],
-#             padding = "VALID"
-#         )
-#         patch_num = patches.shape[1] * patches.shape[1] if patches.shape[1] is not None else None
-#         patches = tf.reshape(patches, (B, patch_num , patches.shape[-1]))
-#         return patches
- 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = "2"
 
 class PatchAndEmbed(tf.keras.layers.Layer):
 
@@ -32,12 +12,11 @@ class PatchAndEmbed(tf.keras.layers.Layer):
         self.embed_dim = embed_dim
         self.proj = tf.keras.layers.Conv2D(embed_dim, patch_size, patch_size)
         self.norm = tf.keras.layers.LayerNormalization(epsilon = 1e-5)
-        self.Reshape = tf.keras.layers.Reshape(target_shape=(-1, window_size * window_size, embed_dim))
-
+        self.window_size = window_size
 
     def call(self, input):
         x = self.proj(input)
-        x = self.Reshape(x)
+        x = tf.reshape(x, [-1, self.window_size * self.window_size, self.embed_dim])
         x = self.norm(x)
         return x
 
@@ -81,7 +60,6 @@ class WindowAttention(tf.keras.layers.Layer):
         head_dim = self.embed_dim // num_heads
         self.scale = head_dim ** -0.5
 
- 
         self.qkv = tf.keras.layers.Dense(3 * embed_dim, use_bias=True)
         self.projection = tf.keras.layers.Dense(embed_dim)  
         self.attn_Dropout = tf.keras.layers.Dropout(attn_dropout_rate) 
@@ -105,15 +83,12 @@ class WindowAttention(tf.keras.layers.Layer):
         self.rel_pos_index = tf.Variable(
             initial_value = tf.convert_to_tensor(rel_pos_index), trainable = False
         ) 
-        self.built = True
-
 
 
     def call(self, input, mask = None):
         _, num_patches, C = input.get_shape().as_list()
         qkv = self.qkv(input)
-        qkv = tf.reshape(qkv, [-1, num_patches, 3, self.num_heads, C // self.num_heads])
-        qkv = tf.transpose(qkv, [2, 0, 3, 1, 4])
+        qkv = tf.reshape(qkv, [3, -1, self.num_heads, num_patches, C // self.num_heads])
         q, k, v = qkv[0], qkv[1], qkv[2]
         q *= self.scale
         attn = tf.matmul(q, tf.transpose(k, [0, 1, 3, 2]))
@@ -162,13 +137,13 @@ class TransformerBlock(tf.keras.layers.Layer):
         self.norm_layer2 = tf.keras.layers.LayerNormalization(epsilon = 1e-5)
         self.attn = WindowAttention(embed_dim, (self.window_size, self.window_size), num_heads, attn_drop, proj_drop)
         self.drop_path = StochasticDepth(0.2)
-        self.Mlp = tf.keras.Sequential([
-            tf.keras.layers.Dense(4 * embed_dim),
-            tf.keras.layers.Activation(tf.keras.activations.gelu),
-            tf.keras.layers.Dropout(proj_drop),
-            tf.keras.layers.Dense(embed_dim),
-            tf.keras.layers.Dropout(proj_drop)
-        ])
+        self.mlp_fc1 = tf.keras.layers.Dense(units=(4 * embed_dim))
+        self.mlp_drop1 = tf.keras.layers.Dropout(proj_drop)
+        self.mlp_fc2 = tf.keras.layers.Dense(embed_dim)
+        self.mlp_drop2 = tf.keras.layers.Dropout(proj_drop)
+        if min(self.input_res) < self.window_size:
+            self.window_shift = 0
+            self.window_size = min(self.input_res)
     def build(self, input_shape):
         if self.window_shift > 0:
             height, width = self.input_res
@@ -197,7 +172,6 @@ class TransformerBlock(tf.keras.layers.Layer):
             self.mask = tf.Variable(initial_value=mask, trainable=False)
         else:
             self.mask = None
-        self.built = True
 
     def call(self, input):
         height, width = self.input_res
@@ -207,7 +181,7 @@ class TransformerBlock(tf.keras.layers.Layer):
         x = tf.reshape(x, [-1, height, width, C])
         if self.window_shift > 0:
             shifted_x = tf.roll(
-                x, shift = [-self.window_shift, self.window_shift], axis = [1, 2]
+                x, shift = [-self.window_shift, -self.window_shift], axis = [1, 2]
             )
         else:
             shifted_x = x
@@ -221,11 +195,15 @@ class TransformerBlock(tf.keras.layers.Layer):
             x = tf.roll(
                 x, shift = [self.window_shift, self.window_shift], axis = [1, 2]
             )
-        x = tf.reshape(x, [-1, num_patches, C])
+        x = tf.reshape(x, [-1, height * width, C])
         x = self.drop_path(x) + skip_connection
         skip_connection = x
         x = self.norm_layer2(x)
-        x = self.Mlp(x)
+        x = self.mlp_fc1(x)
+        x = tf.keras.activations.gelu(x)
+        x = self.mlp_drop1(x)
+        x = self.mlp_fc2(x)
+        x = self.mlp_drop2(x)
         x = self.drop_path(x) + skip_connection
         return x
     
@@ -273,42 +251,41 @@ class SwinTransformer(tf.keras.Model):
         self.patch_embed = PatchAndEmbed(input_dim // patch_size, patch_size, embed_dim)
        
         self.transformers_stage1 = StageTransformerBlocks(depth[0], 
-                                                        input_dim // 4, 
+                                                        input_dim // patch_size, 
                                                         embed_dim, 
                                                         num_heads[0],
                                                         attn_drop_rate,
                                                         proj_drop_rate,
                                                         window_size)
-        self.merge1 = PatchMerging((input_dim // 4, input_dim // 4), embed_dim)
+        self.merge1 = PatchMerging((input_dim // patch_size, input_dim // patch_size), embed_dim)
         self.transformers_stage2 = StageTransformerBlocks(depth[1], 
-                                                        input_dim // 8, 
+                                                        input_dim // (2 * patch_size), 
                                                         embed_dim * 2, 
                                                         num_heads[1],
                                                         attn_drop_rate,
                                                         proj_drop_rate,
                                                         window_size)
-        self.merge2 = PatchMerging((input_dim // 8, input_dim // 8), 2 * embed_dim)
+        self.merge2 = PatchMerging((input_dim // (2 * patch_size), input_dim // (2 * patch_size)), 2 * embed_dim)
         self.transformers_stage3 = StageTransformerBlocks(depth[2], 
-                                                        input_dim // 16, 
+                                                        input_dim // (4 * patch_size), 
                                                         embed_dim * 4, 
                                                         num_heads[2],
                                                         attn_drop_rate,
                                                         proj_drop_rate,
                                                         window_size)
-        self.merge3 = PatchMerging((input_dim // 16, input_dim // 16), 4 * embed_dim)
+        self.merge3 = PatchMerging((input_dim // (4 * patch_size), input_dim // (4 * patch_size)), 4 * embed_dim)
         self.transformers_stage4 = StageTransformerBlocks(depth[3], 
-                                                        input_dim // 32, 
+                                                        input_dim // (8 * patch_size), 
                                                         embed_dim * 8,
                                                         num_heads[3],
                                                         attn_drop_rate,
                                                         proj_drop_rate,
                                                         window_size)
         self.pool = tf.keras.layers.GlobalAveragePooling1D()
-        self.class_output_layer = tf.keras.layers.Dense(num_classes, activation = 'sigmoid', name = 'class_predictions')
+        self.class_output_layer = tf.keras.layers.Dense(num_classes, activation = 'softmax', name = 'class_predictions')
     
     def call(self, input):
         x = self.patch_embed(input)
-        x = tf.reshape(x, [-1, self.input_dim // 4 * self.input_dim // 4, self.embed_dim])
         x = self.transformers_stage1(x)
         x = self.merge1(x)
         x = self.transformers_stage2(x)
