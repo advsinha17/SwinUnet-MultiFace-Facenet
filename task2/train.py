@@ -10,23 +10,38 @@ def train(epochs: int = 20,
           load_pretrained_weights: bool = True, 
           load_trained_weights: bool = False):
     
-    if not os.path.exists(os.path.join(CWD, "weights")):
-        load_trained_weights = False
-    
+    weights_path = os.path.join(CWD, "weights")
+
     if load_pretrained_weights and load_trained_weights:
-        load_pretrained_weights = False
+        if os.path.exists(weights_path):
+            print("Warning: Both load_pretrained_weights and load_trained_weights given True. Using trained weights.")
+            load_pretrained_weights = False
+        else:
+            print("Warning: Both load_pretrained_weights and load_trained_weights given True but trained weights not available. Using pretrained weights.")
+            load_trained_weights = False
 
-
+    elif load_trained_weights:
+        if not os.path.exists(weights_path):
+            print("Warning: Trained weights not available. Weights will be randomly initialized.")
+            load_trained_weights = False
 
     data_path = os.path.join(CWD, 'data/Extracted Faces')
     data_folder = os.listdir(data_path)
-    data_generator = DatasetGenerator(data_path, data_folder, preprocess=True, batch_size=batch_size)
+    images_folder = {}
+    for folder in data_folder:
+        path = os.path.join(data_path, folder)
+        if os.path.isdir(path):
+            images_folder[folder] = len(os.listdir(path))
+
+    data_generator = DatasetGenerator(data_path, images_folder, preprocess=True, batch_size=batch_size)
     model = Facenet(learning_rate = 0.001,
                     freeze_layers = freeze_layers,
                     pretrained_weights = load_pretrained_weights,
                     trained_weights = load_trained_weights
                     )
     model.fit(data_generator, epochs)
+
+    print("Training completed successfully.")
 
 
 
