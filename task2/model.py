@@ -110,6 +110,7 @@ class Facenet:
             history (dict): A dictionary containing training history (e.g., 'train_loss').
         """
         train_loss = []
+        os.makedirs(os.path.join(CWD, 'weights'), exist_ok=True)
         for epoch in range(1, epochs + 1):
             epoch_loss = []
             with tqdm(inputs, unit="batch") as tepoch:
