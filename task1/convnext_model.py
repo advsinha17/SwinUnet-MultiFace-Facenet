@@ -56,7 +56,7 @@ class ConvNeXT(tf.keras.Model):
 
         self.pool = tf.keras.layers.GlobalAvgPool2D()
         self.norm_layer2 = tf.keras.layers.LayerNormalization()
-        self.class_output_layer = tf.keras.layers.Dense(num_classes, activation = 'sigmoid', name = 'class_predictions')
+        self.class_output_layer = tf.keras.layers.Dense(num_classes, activation = 'softmax', name = 'class_predictions')
 
 
     def call(self, x):
@@ -81,4 +81,3 @@ class ConvNeXT(tf.keras.Model):
         class_output = self.class_output_layer(x)
 
         return class_output
-
