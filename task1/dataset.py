@@ -4,8 +4,11 @@ import numpy as np
 import random
 import re
 from labeldata import id_to_color
+import albumentations as A
 
 import tensorflow as tf
+
+CWD = os.path.dirname(__file__)
 
 class DataGenerator(tf.keras.utils.Sequence):
 
@@ -31,12 +34,14 @@ class DataGenerator(tf.keras.utils.Sequence):
         self.images_dir = images_dir
         self.batch_size = batch_size
         self.shuffle = shuffle
+        self.predicting = predicting
         self.list_images = os.listdir(images_dir)
         if predicting:
             self._sort_dir()
         self.image_size = (128, 128)
         self.image_shape = self.image_size + (3,)
         self.id_to_color = id_to_color
+        self.rand_augment = randAugment(1, 3, 0.2, cut_out=True)
         self.on_epoch_end()
 
     def _sort_dir(self):
@@ -94,6 +99,10 @@ class DataGenerator(tf.keras.utils.Sequence):
         image, mask = image.crop([0, 0, 256, 256]), image.crop([256, 0, 512, 256])
         image = image.resize(self.image_size)
         mask = mask.resize(self.image_size)
+        if not self.predicting:
+            if tf.random.uniform(()) > 0.5:
+                transformed = self.rand_augment(image=np.array(image), image_mask=np.array(mask))
+                image, mask = transformed['image'], transformed['image_mask']
         image = np.array(image)/255.0
         mask = np.array(mask)
         return image, mask
@@ -155,3 +164,27 @@ class DataGenerator(tf.keras.utils.Sequence):
         """
         if self.shuffle:
             random.shuffle(self.list_images)
+
+def randAugment(N, M, p, cut_out = False):
+    shift_x = np.linspace(0,150,10)
+    shift_y = np.linspace(0,150,10)
+    rot = np.linspace(0,30,10)
+    cont = [np.linspace(-0.8,-0.1,10),np.linspace(0.1,2,10)]
+    bright = np.linspace(0.1,0.7,10)
+    shar = np.linspace(0.1,0.9,10)
+    cut = np.linspace(0,60,10)
+    Aug =[
+        A.ShiftScaleRotate(shift_limit_x=shift_x[M], rotate_limit=0,   shift_limit_y=0, shift_limit=shift_x[M], p=p),
+        A.ShiftScaleRotate(shift_limit_y=shift_y[M], rotate_limit=0, shift_limit_x=0, shift_limit=shift_y[M], p=p),
+        A.Affine(rotate=rot[M], p=p),
+        A.InvertImg(p=p),
+        A.Equalize(p=p),
+        A.RandomBrightnessContrast(brightness_limit=bright[M], contrast_limit=[cont[0][M], cont[1][M]], p=p),
+        A.Sharpen(alpha=shar[M], lightness=shar[M], p=p)]
+    ops = np.random.choice(Aug, N)
+
+    if cut_out:
+            list(ops).append(A.CoarseDropout(max_holes=8, max_height=int(cut[M]), max_width=int(cut[M]), p=p))
+            
+    transforms = A.Compose(ops, additional_targets={'image_mask': 'image'})
+    return transforms
