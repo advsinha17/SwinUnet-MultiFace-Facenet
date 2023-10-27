@@ -1,5 +1,5 @@
 import tensorflow as tf
-from swin_model import PatchAndEmbed, StageTransformerBlocks, PatchMerging
+from swin_model import PatchAndEmbed, StageTransformerBlocks, PatchMerging, SwinTransformer
 from UNetBlocks import UpsamplingBlock
 
 
@@ -27,42 +27,8 @@ class SwinUNet(tf.keras.Model):
         self.patch_size = patch_size
         self.embed_dim = embed_dim
         # Downsampling blocks
-        self.patch_embed = PatchAndEmbed(input_dim // patch_size, patch_size, embed_dim)
-        self.downsampling_block1 = StageTransformerBlocks(depths[0], 
-                                                        input_dim // patch_size, 
-                                                        embed_dim, 
-                                                        num_heads[0],
-                                                        attn_drop_rate,
-                                                        proj_drop_rate,
-                                                        window_size)
-
-        self.merge1 = PatchMerging((input_dim // patch_size, input_dim // patch_size), embed_dim)
-        self.downsampling_block2 = StageTransformerBlocks(depths[1], 
-                                                        input_dim // (2 * patch_size), 
-                                                        embed_dim * 2, 
-                                                        num_heads[1],
-                                                        attn_drop_rate,
-                                                        proj_drop_rate,
-                                                        window_size)
-
-        self.merge2 = PatchMerging((input_dim // (2 * patch_size), input_dim // (2 * patch_size)), 2 * embed_dim)
-        self.downsampling_block3 = StageTransformerBlocks(depths[2], 
-                                                        input_dim // (4 * patch_size), 
-                                                        embed_dim * 4, 
-                                                        num_heads[2],
-                                                        attn_drop_rate,
-                                                        proj_drop_rate,
-                                                        window_size)
-
-        self.merge3 = PatchMerging((input_dim // (4 * patch_size), input_dim // (4 * patch_size)), 4 * embed_dim)
-        self.downsampling_block4 =  StageTransformerBlocks(depths[3], 
-                                                        input_dim // (8 * patch_size), 
-                                                        embed_dim * 8,
-                                                        num_heads[3],
-                                                        attn_drop_rate,
-                                                        proj_drop_rate,
-                                                        window_size)
-        self.downsampling_block5 =  StageTransformerBlocks(depths[3], 
+        self.encoder = SwinTransformer(n_classes, input_dim, patch_size, embed_dim, depths, num_heads, window_size, attn_drop_rate, proj_drop_rate, False)
+        self.last_transformer =  StageTransformerBlocks(depths[3], 
                                                         input_dim // (8 * patch_size), 
                                                         embed_dim * 8,
                                                         num_heads[3],
@@ -91,18 +57,18 @@ class SwinUNet(tf.keras.Model):
     def call(self, input_tensor, training = False):
         """ Forward pass for SwinUNet."""
         # Downsampling blocks
-        x = self.patch_embed(input_tensor)
-        down1 = self.downsampling_block1(x, training = training)
-        x = self.merge1(down1)
-        down1= tf.reshape(down1, [-1, self.input_dim // self.patch_size, self.input_dim // self.patch_size, self.embed_dim])
-        down2 = self.downsampling_block2(x, training = training)
-        x = self.merge2(down2)
+        x = self.encoder.patch_embed(input_tensor)
+        down1 = self.encoder.transformers_stage1(x)
+        x = self.encoder.merge1(down1)
+        down1 = tf.reshape(down1, [-1, self.input_dim // self.patch_size, self.input_dim // self.patch_size, self.embed_dim])
+        down2 = self.encoder.transformers_stage2(x)
+        x = self.encoder.merge2(down2)
         down2 = tf.reshape(down2, [-1, self.input_dim // (2 * self.patch_size), self.input_dim // (2 * self.patch_size), 2 * self.embed_dim])
-        down3 = self.downsampling_block3(x, training = training)
-        x = self.merge3(down3)
+        down3 = self.encoder.transformers_stage3(x)
+        x = self.encoder.merge3(down3)
         down3 = tf.reshape(down3, [-1, self.input_dim // (4 * self.patch_size), self.input_dim // (4 * self.patch_size), 4 * self.embed_dim])
-        down4 = self.downsampling_block4(x, training = training)
-        down5 = self.downsampling_block5(down4, training = training)
+        down4 = self.encoder.transformers_stage4(x)
+        down5 = self.last_transformer(down4, training = training)
         down4 = tf.reshape(down4, [-1, self.input_dim // (8 * self.patch_size), self.input_dim // (8 * self.patch_size), 8 * self.embed_dim])
         down5 = tf.reshape(down5, [-1, self.input_dim // (8 * self.patch_size), self.input_dim // (8 * self.patch_size), 8 * self.embed_dim])
 
