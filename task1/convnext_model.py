@@ -23,7 +23,7 @@ class ConvNeXTBlock(tf.keras.layers.Layer):
         self.gamma = tf.Variable(1e-6 * tf.ones(embed_dim,))
         self.drop_path = StochasticDepth(0.1)
 
-    def call(self, input):
+    def call(self, input, training = None):
         """
         Forward pass of the ConvNeXT Block.
         """
@@ -33,7 +33,7 @@ class ConvNeXTBlock(tf.keras.layers.Layer):
         x = self.gelu(x)
         x = self.pointwise_conv2(x)
         x *= self.gamma
-        x = self.drop_path(x) + input
+        x = self.drop_path(x, training = training) + input
 
         return x
 
@@ -48,7 +48,7 @@ class ConvNeXT(tf.keras.Model):
         depths (list of ints): Number of ConvNeXT blocks in each stage, default is [3, 3, 9, 3].
     """
 
-    def __init__(self, num_classes, embed_dim = 96, depths = [3, 3, 9, 3]):
+    def __init__(self, num_classes, embed_dim = 96, depths = [3, 3, 9, 3], include_top = True):
         
         super(ConvNeXT, self).__init__()
 
@@ -96,8 +96,9 @@ class ConvNeXT(tf.keras.Model):
             x = layer(x)
         for layer in self.stage4_block:
             x = layer(x)
-        x = self.pool(x)
-        x = self.norm_layer2(x)
-        class_output = self.class_output_layer(x)
+        output = self.pool(x)
+        if self.include_top:
+            output = self.norm_layer2(output)
+            output = self.class_output_layer(output)
 
-        return class_output
+        return output

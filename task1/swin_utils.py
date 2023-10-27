@@ -51,11 +51,13 @@ class StochasticDepth(tf.keras.layers.Layer):
         self.scale_by_keep = scale_by_keep
         self.drop_prob = dropout_prob
 
-
-    def call(self, input):
+    def call(self, input, training=None):
+        if not training:
+            return input
+        
         shape = (tf.shape(input)[0],) + (1,) * (len(tf.shape(input)) - 1)
         random_tensor = tf.random.uniform(shape, minval = 0, maxval = 1)
-        random_tensor = tf.cast(random_tensor < (1 - self.dsrop_prob), input.dtype)
+        random_tensor = tf.cast(random_tensor < (1 - self.drop_prob), input.dtype)
         if 1 - self.drop_prob > 0 and self.scale_by_keep:
             random_tensor /= (1 - self.drop_prob)
         return input * random_tensor

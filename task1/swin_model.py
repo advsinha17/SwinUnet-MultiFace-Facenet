@@ -220,7 +220,7 @@ class TransformerBlock(tf.keras.layers.Layer):
         else:
             self.mask = None
 
-    def call(self, input):
+    def call(self, input, training = None):
         """ Forward pass for TransformerBlock."""
         height, width = self.input_res
         _, num_patches, C = input.get_shape().as_list()
@@ -244,7 +244,7 @@ class TransformerBlock(tf.keras.layers.Layer):
                 x, shift = [self.window_shift, self.window_shift], axis = [1, 2]
             )
         x = tf.reshape(x, [-1, height * width, C])
-        x = self.drop_path(x) + skip_connection
+        x = self.drop_path(x, training = training) + skip_connection
         skip_connection = x
         x = self.norm_layer2(x)
         x = self.mlp_fc1(x)
@@ -252,7 +252,7 @@ class TransformerBlock(tf.keras.layers.Layer):
         x = self.mlp_drop1(x)
         x = self.mlp_fc2(x)
         x = self.mlp_drop2(x)
-        x = self.drop_path(x) + skip_connection
+        x = self.drop_path(x, training = training) + skip_connection
         return x
     
 class StageTransformerBlocks(tf.keras.layers.Layer):
@@ -318,12 +318,14 @@ class SwinTransformer(tf.keras.Model):
                 num_heads = [3, 6, 12, 24],
                 window_size = 7,
                 attn_drop_rate = 0.,
-                proj_drop_rate = 0.
+                proj_drop_rate = 0.,
+                include_top = True
                 ):
         super(SwinTransformer, self).__init__()
 
         self.input_dim = input_dim
         self.embed_dim = embed_dim
+        self.include_top = include_top
         self.patch_embed = PatchAndEmbed(input_dim // patch_size, patch_size, embed_dim)
        
         self.transformers_stage1 = StageTransformerBlocks(depth[0], 
@@ -370,8 +372,9 @@ class SwinTransformer(tf.keras.Model):
         x = self.transformers_stage3(x)
         x = self.merge3(x)
         x = self.transformers_stage4(x)
-        x = self.pool(x)
-        class_output = self.class_output_layer(x)
+        output = self.pool(x)
+        if self.include_top:
+            output = self.class_output_layer(x)
 
-        return class_output
+        return output
 
