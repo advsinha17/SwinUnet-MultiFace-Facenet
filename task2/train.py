@@ -9,6 +9,17 @@ def train(epochs: int = 20,
           freeze_layers: int = 250,
           load_pretrained_weights: bool = True, 
           load_trained_weights: bool = False):
+    """
+    Train the FaceNet model on the given dataset.
+
+    Parameters:
+        epochs (int): Number of training epochs.
+        batch_size (int): Size of the batches for training.
+        freeze_layers (int): Number of initial layers to freeze.
+        load_pretrained_weights (bool): If True, will load pretrained weights for the model.
+        load_trained_weights (bool): If True, will load previously trained weights.
+
+    """
     
     weights_path = os.path.join(CWD, "weights")
 
@@ -43,5 +54,9 @@ def train(epochs: int = 20,
 
     print("Training completed successfully.")
 
-
-
+if __name__ == "__main__":
+    train(epochs = 20, 
+        batch_size = 64,
+        freeze_layers = 250,
+        load_pretrained_weights = True,
+        load_trained_weights = False)
