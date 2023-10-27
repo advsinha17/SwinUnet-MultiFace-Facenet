@@ -5,6 +5,13 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 class ConvNeXTBlock(tf.keras.layers.Layer):
 
+    """
+    Represents the basic building block of the ConvNeXT network.
+
+    Args:
+        embed_dim (int): Embedding dimension of the block.
+    """
+
     def __init__(self, embed_dim):
 
         super(ConvNeXTBlock, self).__init__()
@@ -17,6 +24,9 @@ class ConvNeXTBlock(tf.keras.layers.Layer):
         self.drop_path = StochasticDepth(0.1)
 
     def call(self, input):
+        """
+        Forward pass of the ConvNeXT Block.
+        """
         x = self.depthwise_conv(input)
         x = self.norm_layer(x)
         x = self.pointwise_conv1(x)
@@ -28,6 +38,15 @@ class ConvNeXTBlock(tf.keras.layers.Layer):
         return x
 
 class ConvNeXT(tf.keras.Model):
+
+    """
+    Represents the ConvNeXT network architecture.
+
+    Args:
+        num_classes (int): Number of output classes for classification.
+        embed_dim (int): Embedding dimension of the first ConvNeXT block, default is 96.
+        depths (list of ints): Number of ConvNeXT blocks in each stage, default is [3, 3, 9, 3].
+    """
 
     def __init__(self, num_classes, embed_dim = 96, depths = [3, 3, 9, 3]):
         
@@ -60,6 +79,7 @@ class ConvNeXT(tf.keras.Model):
 
 
     def call(self, x):
+        """Forward pass of the ConvNeXT network."""
         for layer in self.stage1:
             x = layer(x)
         for layer in self.stage1_block:

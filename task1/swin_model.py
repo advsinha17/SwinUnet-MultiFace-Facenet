@@ -7,6 +7,15 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = "2"
 
 class PatchAndEmbed(tf.keras.layers.Layer):
 
+    """ 
+    Divide the image into fixed-size patches and linearly embed each patch. 
+
+    Args:
+        window_size (int): The size of each window in the output.
+        patch_size (int): The size of each patch. Default is 4.
+        embed_dim (int): The embedding dimension. Default is 96.
+    """
+
     def __init__(self, window_size, patch_size = 4, embed_dim = 96):
         super(PatchAndEmbed, self).__init__()
         self.embed_dim = embed_dim
@@ -15,6 +24,7 @@ class PatchAndEmbed(tf.keras.layers.Layer):
         self.window_size = window_size
 
     def call(self, input):
+        """ Forward pass for PatchAndEmbed."""
         x = self.proj(input)
         x = tf.reshape(x, [-1, self.window_size * self.window_size, self.embed_dim])
         x = self.norm(x)
@@ -22,6 +32,13 @@ class PatchAndEmbed(tf.keras.layers.Layer):
 
 
 class PatchMerging(tf.keras.layers.Layer):
+    """ 
+    Layer that merges neighboring patches.
+
+    Args:
+        input_res (tuple of ints): The resolution of input tensor.
+        embed_dim (int): The embedding dimension.
+    """
 
     def __init__(self, input_res, embed_dim):
         super(PatchMerging, self).__init__()
@@ -31,6 +48,7 @@ class PatchMerging(tf.keras.layers.Layer):
         self.norm_layer = tf.keras.layers.LayerNormalization(epsilon = 1e-5)
 
     def call(self, input):
+        """ Forward pass for PatchMerging."""
         height, width = self.input_res
         _, _ , C = input.get_shape().as_list()
         x = tf.reshape(input, [-1, height, width, C])
@@ -46,6 +64,16 @@ class PatchMerging(tf.keras.layers.Layer):
         return x
     
 class WindowAttention(tf.keras.layers.Layer):
+    """ 
+    Multi-head self attention mechanism for Swin Transformer.
+
+    Args:
+        embed_dim (int): The embedding dimension.
+        window_size (tuple of ints): The size of window used.
+        num_heads (int): Number of attention heads.
+        attn_dropout_rate (float): Dropout rate for dropout layer after attention layers. Default is 0.
+        proj_dropout_rate (float): Dropout rate for dropout layer after projection layers. Default is 0.
+    """
 
     def __init__(self, 
                 embed_dim, 
@@ -66,6 +94,7 @@ class WindowAttention(tf.keras.layers.Layer):
         self.proj_Dropout = tf.keras.layers.Dropout(proj_dropout_rate)
 
     def build(self, input_shape):
+        """ Build relative positional encoding. """
         self.rel_pos_table = self.add_weight(shape = ((2 * self.window_size[0] - 1) * (2 * self.window_size[1] - 1), self.num_heads),
                                                            initializer = tf.keras.initializers.Zeros(),
                                                            trainable = True)
@@ -86,6 +115,7 @@ class WindowAttention(tf.keras.layers.Layer):
 
 
     def call(self, input, mask = None):
+        """ Forward pass for WindowAttention."""
         _, num_patches, C = input.get_shape().as_list()
         qkv = self.qkv(input)
         qkv = tf.reshape(qkv, [3, -1, self.num_heads, num_patches, C // self.num_heads])
@@ -114,6 +144,19 @@ class WindowAttention(tf.keras.layers.Layer):
 
 
 class TransformerBlock(tf.keras.layers.Layer):
+    """
+    Implements a transformer block with multi-head self attention mechanism.
+    Uses a shifted window-based attention for capturing local and global information.
+    
+    Args:
+        embed_dim(int): The embedding dimension.
+        input_res(tuple of ints): The resolution of the input tensor.
+        num_heads(int): Number of attention heads for the multi-head self attention mechanism.
+        window_size(int): The size of the window to be used for the window-based attention. Default is 7.
+        window_shift(int): Shift size for the attention window. Default is 0.
+        attn_drop(float): Dropout rate for the dropout layer after the attention mechanism. Default is 0.
+        proj_drop(float): Dropout rate for the dropout layer afterprojection. Default is 0.
+    """
 
     def __init__(self, 
                 embed_dim, 
@@ -144,7 +187,11 @@ class TransformerBlock(tf.keras.layers.Layer):
         if min(self.input_res) < self.window_size:
             self.window_shift = 0
             self.window_size = min(self.input_res)
+
     def build(self, input_shape):
+        """
+        Builds the layer by initializing a mask for the shifted window-based attention if the window shift is greater than 0.
+        """
         if self.window_shift > 0:
             height, width = self.input_res
             mask = np.zeros((1, height, width, 1))
@@ -174,6 +221,7 @@ class TransformerBlock(tf.keras.layers.Layer):
             self.mask = None
 
     def call(self, input):
+        """ Forward pass for TransformerBlock."""
         height, width = self.input_res
         _, num_patches, C = input.get_shape().as_list()
         skip_connection = input
@@ -208,6 +256,18 @@ class TransformerBlock(tf.keras.layers.Layer):
         return x
     
 class StageTransformerBlocks(tf.keras.layers.Layer):
+    """
+    Implements a series of Transformer blocks for a specific stage in the architecture.
+    
+    Args:
+        depth(int): Number of Transformer blocks in this stage.
+        input_dim(int): Dimension of the input tensor.
+        embed_dim(int): The embedding dimension.
+        num_heads(int): Number of attention heads for the multi-head self attention mechanism.
+        attn_drop(float): Dropout rate for the dropout layer after the attention mechanism. Default is 0.
+        proj_drop(float): Dropout rate for the dropout layer after projection. Default is 0.
+        window_size(int): The size of the window to be used for the window-based attention. Default is 7.
+    """
 
     def __init__(self, depth, input_dim, embed_dim, num_heads, attn_drop = 0., proj_drop = 0., window_size = 7):
         super(StageTransformerBlocks, self).__init__()
@@ -225,12 +285,29 @@ class StageTransformerBlocks(tf.keras.layers.Layer):
         ]
 
     def call(self, x):
+        """ Forward pass for StageTransformerBlock."""
         for layer in self.transformers:
             x = layer(x)
         return x
 
 
 class SwinTransformer(tf.keras.Model):
+    """
+    Swin Transformer architecture. This model divides an image into patches, embeds them, and 
+    uses a series of transformer blocks for feature extraction, followed by a classification head.
+    
+    Args:
+        num_classes(int): Number of output classes for classification.
+        input_dim(int): Dimension of the input image. Default is 224.
+        patch_size(int): Number of pixels along one dimension of each patch. Default is 4.
+        embed_dim(int): Embedding dimension for the patches. Default is 96.
+        depth(list of ints): List of number of Transformer blocks for each stage.
+        num_heads(list of ints): List of number of attention heads for each stage.
+        window_size(int): The size of the window to be used for the window-based attention in each block. Default is 7.
+        attn_drop(float): Dropout rate for the dropout layer after the attention mechanism. Default is 0.
+        proj_drop(float): Dropout rate for the dropout layer after projection. Default is 0.
+    """
+
 
     def __init__(self,
                 num_classes,
@@ -239,7 +316,6 @@ class SwinTransformer(tf.keras.Model):
                 embed_dim = 96,
                 depth = [2, 2, 6, 2],
                 num_heads = [3, 6, 12, 24],
-
                 window_size = 7,
                 attn_drop_rate = 0.,
                 proj_drop_rate = 0.
@@ -285,6 +361,7 @@ class SwinTransformer(tf.keras.Model):
         self.class_output_layer = tf.keras.layers.Dense(num_classes, activation = 'softmax', name = 'class_predictions')
     
     def call(self, input):
+        """ Forward pass for SwinTransformer."""
         x = self.patch_embed(input)
         x = self.transformers_stage1(x)
         x = self.merge1(x)

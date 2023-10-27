@@ -4,6 +4,20 @@ from UNetBlocks import UpsamplingBlock
 
 
 class SwinUNet(tf.keras.Model):
+    """
+    A SwinUNet architecture combining Swin Transformer blocks with a U-Net for segmentation tasks.
+
+    Args:
+        input_dim (int): Dimension of the input image.
+        n_classes (int): Number of output classes for segmentation. Default is 3.
+        depths (list of int): Number of blocks in each StageTransformerBlock. Default is [2, 2, 6, 2].
+        num_heads (list of int): Number of attention heads in each StageTransformerBlock. Default is [3, 6, 12, 24].
+        window_size (int): Window size for the Swin Transformer. Default is 7.
+        patch_size(int): Number of pixels along one dimension of each patch. Default is 4.
+        embed_dim(int): Embedding dimension for the patches. Default is 96.
+        attn_drop(float): Dropout rate for the dropout layer after the attention mechanism. Default is 0.
+        proj_drop(float): Dropout rate for the dropout layer after projection. Default is 0.
+    """
 
 
     def __init__(self,  input_dim, n_classes = 3, depths = [2, 2, 6, 2], num_heads = [3, 6, 12, 24], window_size = 7, patch_size = 4, embed_dim = 96, attn_drop_rate = 0., proj_drop_rate = 0.):
@@ -75,9 +89,7 @@ class SwinUNet(tf.keras.Model):
         self.output_conv = tf.keras.layers.Conv2D(n_classes, 1, padding = 'same')
 
     def call(self, input_tensor, training = False):
-
-
-
+        """ Forward pass for SwinUNet."""
         # Downsampling blocks
         x = self.patch_embed(input_tensor)
         down1 = self.downsampling_block1(x, training = training)
