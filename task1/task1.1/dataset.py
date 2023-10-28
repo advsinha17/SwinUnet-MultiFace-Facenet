@@ -3,7 +3,9 @@ import os
 import tensorflow as tf
 
 class DataGenerator(tf.keras.utils.Sequence):
-    
+    """
+    Data Generator for the disentangled VAE.
+    """
     def __init__(self, data, batch_size=16, img_size=64, shuffle=True):
         
         self.imgs = data

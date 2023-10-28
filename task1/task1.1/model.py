@@ -5,7 +5,7 @@ import numpy as np
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 class SampleLayer(tf.keras.layers.Layer):
-
+    """Sample from a distribution with given mean and variance."""
     def __init__(self):
         super(SampleLayer, self).__init__()
 
@@ -17,6 +17,12 @@ class SampleLayer(tf.keras.layers.Layer):
 
 
 class Encoder(tf.keras.layers.Layer):
+    """
+    Encoder part of the VAE model.
+    
+    Args:
+        latent_dim(int): Dimesion of the latent space.
+    """
 
     def __init__(self, latent_dim):
 
@@ -56,6 +62,13 @@ class Encoder(tf.keras.layers.Layer):
     
 class Decoder(tf.keras.layers.Layer):
 
+    """
+    Decoder part of the VAE model.
+    
+    Args:
+        out_channels(int): Number of channels in the reconstructed output. Default is 3.
+    """
+
     def __init__(self, out_channels=3):
         super(Decoder, self).__init__()
         
@@ -90,6 +103,15 @@ class Decoder(tf.keras.layers.Layer):
 
     
 class BetaVAE(tf.keras.Model):
+    
+    """
+    Beta Variational Autoencoder (VAE) model.
+
+    Args:
+        latent_dim (int): Dimensionality of the latent space.
+        beta (float, optional): Weighting factor for the KL divergence loss. Default is 4.0.
+        out_channels (int, optional): Number of channels in the reconstructed output. Default is 3.
+    """
 
     def __init__(self, latent_dim, beta = 4.0, out_channels = 3):
 
