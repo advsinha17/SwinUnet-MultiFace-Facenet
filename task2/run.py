@@ -37,7 +37,7 @@ inference_parser.add_argument('--output_folder', type=str, default="output_image
                                 path will be overwritten. Defaults to `output_images/`''')
 inference_parser.add_argument('--use_pretrained_weights', action='store_true', 
                           help='Load pretrained Facenet weights.')
-inference_parser.add_argument('--no-use_pretrained_weights', dest='load_pretrained_weights', action='store_false',
+inference_parser.add_argument('--no-use_pretrained_weights', dest='use_pretrained_weights', action='store_false',
                           help='Do not load pretrained Facenet weights.')
 inference_parser.add_argument('--use_trained_weights', action='store_true',
                           help='''Whether to use trained/finetuned weights (if exists) 
