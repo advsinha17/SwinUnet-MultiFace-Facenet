@@ -33,18 +33,18 @@ class Encoder(tf.keras.layers.Layer):
         self.dense1 = tf.keras.layers.Dense(256, activation = 'relu')
         self.dense2 = tf.keras.layers.Dense(512, activation = 'relu')
         self.mean_layer = tf.keras.layers.Dense(latent_dim)
-        self.var_layer = tf.keras.layers.Dense(latent_dim, activation='softplus')
+        self.var_layer = tf.keras.layers.Dense(latent_dim)
         self.sample_layer = SampleLayer()
 
-    def call(self, input):
+    def call(self, input, training = None):
         x = self.conv1(input)
-        x = self.bn1(x)
+        x = self.bn1(x, training = training)
         x = self.conv2(x)
-        x = self.bn2(x)
+        x = self.bn2(x, training = training)
         x = self.conv3(x)
-        x = self.bn3(x)
+        x = self.bn3(x, training = training)
         x = self.conv4(x)
-        x = self.bn4(x)
+        x = self.bn4(x, training = training)
         x = self.Flatten(x)
         x = self.dense1(x)
         x = self.dense2(x)
@@ -62,29 +62,29 @@ class Decoder(tf.keras.layers.Layer):
         self.dense1 = tf.keras.layers.Dense(256, activation='relu')
         self.dense2 = tf.keras.layers.Dense(512, activation='relu')
         self.reshape = tf.keras.layers.Reshape((4, 4, 32))
-        self.conv_transpose1 = tf.keras.layers.Conv2DTranspose(filters=32, kernel_size=4, strides=2, padding='same', activation='relu')
+        self.conv_transpose1 = tf.keras.layers.Conv2DTranspose(filters = 32, kernel_size = 4, strides = 2, padding = 'same', activation = 'relu')
         self.bn1 = tf.keras.layers.BatchNormalization()
-        self.conv_transpose2 = tf.keras.layers.Conv2DTranspose(filters=32, kernel_size=4, strides=2, padding='same', activation='relu')
+        self.conv_transpose2 = tf.keras.layers.Conv2DTranspose(filters = 32, kernel_size = 4, strides = 2, padding = 'same', activation = 'relu')
         self.bn2 = tf.keras.layers.BatchNormalization()
-        self.conv_transpose3 = tf.keras.layers.Conv2DTranspose(filters=64, kernel_size=4, strides=2, padding='same', activation='relu')
+        self.conv_transpose3 = tf.keras.layers.Conv2DTranspose(filters = 64, kernel_size = 4, strides = 2, padding = 'same', activation = 'relu')
         self.bn3 = tf.keras.layers.BatchNormalization()
-        self.conv_transpose4 = tf.keras.layers.Conv2DTranspose(filters=64, kernel_size=4, strides=2, padding='same', activation='relu')
+        self.conv_transpose4 = tf.keras.layers.Conv2DTranspose(filters = 64, kernel_size = 4, strides = 2, padding = 'same', activation = 'relu')
         self.bn4 = tf.keras.layers.BatchNormalization()
         
-        self.output_conv = tf.keras.layers.Conv2DTranspose(filters=out_channels, kernel_size=4, strides=1, padding='same', activation='sigmoid')
+        self.output_conv = tf.keras.layers.Conv2DTranspose(filters = out_channels, kernel_size = 4, strides = 1, padding = 'same', activation = 'sigmoid')
 
-    def call(self, input):
+    def call(self, input, training = None):
         x = self.dense1(input)
         x = self.dense2(x)
         x = self.reshape(x)
         x = self.conv_transpose1(x)
-        x = self.bn1(x)
+        x = self.bn1(x, training = training)
         x = self.conv_transpose2(x)
-        x = self.bn2(x)
+        x = self.bn2(x, training = training)
         x = self.conv_transpose3(x)
-        x = self.bn3(x)
+        x = self.bn3(x, training = training)
         x = self.conv_transpose4(x)
-        x = self.bn4(x)
+        x = self.bn4(x, training = training)
         x = self.output_conv(x)
         return x
 
@@ -120,11 +120,7 @@ class BetaVAE(tf.keras.Model):
         with tf.GradientTape() as tape:
             mean, var, sample = self.encoder(data)
             reconstruction = self.decoder(sample)
-            recon_loss = tf.reduce_mean(
-                tf.reduce_sum(
-                    tf.keras.losses.binary_crossentropy(data, reconstruction), axis=(1, 2)
-                )
-            )
+            recon_loss = tf.reduce_mean(tf.reduce_sum(tf.keras.losses.binary_crossentropy(data, reconstruction), axis=(1, 2)))
             kl_loss = -0.5 * (1 + var - tf.square(mean) - tf.exp(var))
             kl_loss = tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
             total_loss = recon_loss + self.beta * kl_loss
