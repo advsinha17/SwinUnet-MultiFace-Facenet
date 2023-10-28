@@ -4,9 +4,9 @@ import tensorflow as tf
 
 class DataGenerator(tf.keras.utils.Sequence):
     
-    def __init__(self, batch_size=16, img_size=64, shuffle=True):
-        data = np.load(os.path.join(os.path.dirname(__file__), 'dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz'), allow_pickle=True, encoding='latin1')
-        self.imgs = data['imgs']
+    def __init__(self, data, batch_size=16, img_size=64, shuffle=True):
+        
+        self.imgs = data
         self.batch_size = batch_size
         self.img_size = img_size
         self.shuffle = shuffle
