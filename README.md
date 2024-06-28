@@ -1,9 +1,13 @@
 # CRUx Round 3
 
-## Task 1: Architechture implementation
+### Task1: Swin UNET, checkout `task1/README.md`.
+### Task2: Multi-face detection in facenet, checkout `task2/README.md`.
+
+
+## Task 1: Swin & ConvNext Architechture implementation
 
 1. Understanding of the paper Early Visual Concept Learning with Unsupervised Deep Learning
-2. Understand, implement and compare the architectures of Swin Transformer and ConvNeXT on a non-vanilla classification task of your choosing.
+2. Understand, implement and compare the architectures of **Swin Transformer** and **ConvNeXT** on a non-vanilla classification task of your choosing.
    1. For clarification, a vanilla classification task is one where you have a labelled set of images on which you directly perform single or multi-class classification.
 3. Bonus Task: Implementation of the Disentangled VAE (Task 1.1)
 
